@@ -103,7 +103,7 @@ const CurveEditor: React.FC<CurveEditorProps> = ({ type, onChange }) => {
 
             // Draw Points
             ctx.fillStyle = '#4d7cfe';
-            p.forEach((pt, i) => {
+            p.forEach((pt) => {
                 ctx.beginPath();
                 ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
                 ctx.fill();
@@ -115,7 +115,6 @@ const CurveEditor: React.FC<CurveEditorProps> = ({ type, onChange }) => {
             ctx.moveTo(0, h); // Start bottom left
 
             for (let x = 0; x <= w; x += 2) {
-                const t = x / w;
                 let yVal = 0;
                 gaussians.forEach(g => {
                     // Gaussian function: A * exp(-(x-b)^2 / (2c^2))
