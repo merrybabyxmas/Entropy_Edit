@@ -1,2 +1,8 @@
 __pycache__/
-*.pyc
+*.pt
+*.index
+*.meta
+*.mp4
+backend/data/
+backend/data_test/
+.pytest_cache/

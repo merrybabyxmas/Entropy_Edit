@@ -7,3 +7,6 @@ opencv-python
 fastapi
 uvicorn
 pytest
+diffusers
+accelerate
+moviepy
