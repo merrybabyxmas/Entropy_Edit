@@ -9,4 +9,5 @@ uvicorn
 pytest
 diffusers
 accelerate
-moviepy
+moviepy==2.2.1
+python-multipart

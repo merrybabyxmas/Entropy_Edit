@@ -35,9 +35,12 @@ class TestEngine(unittest.TestCase):
         self.assertAlmostEqual(interpreter.get_value_at(0.25), 0.5)
 
     def test_bell_shape(self):
-        weight = get_bell_shape_weight(0.5, peak_t=0.5, sigma=0.1)
+        # Updated signature: t, nodes (List[Dict])
+        node = {'peak_t': 0.5, 'sigma': 0.1, 'amplitude': 1.0}
+        weight = get_bell_shape_weight(0.5, nodes=[node])
         self.assertAlmostEqual(weight, 1.0)
-        weight_far = get_bell_shape_weight(0.0, peak_t=0.5, sigma=0.1)
+
+        weight_far = get_bell_shape_weight(0.0, nodes=[node])
         self.assertTrue(weight_far < 0.1)
 
     def test_optimizer_edl_generation(self):
