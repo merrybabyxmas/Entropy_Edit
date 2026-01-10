@@ -90,10 +90,30 @@ class RenderRequest(BaseModel):
 
 # Endpoints
 
+@app.get("/assets")
+async def get_assets():
+    """
+    Returns a list of all ingested video clips (metadata).
+    Groups them by source filename.
+    """
+    if not state.db or len(state.db.metadata) == 0:
+        return {"assets": []}
+
+    # Group by filename
+    assets = {}
+    for meta in state.db.metadata:
+        filename = meta.get('filename', 'unknown')
+        if filename not in assets:
+            assets[filename] = []
+        assets[filename].append(meta)
+
+    return {"assets": assets, "total_clips": len(state.db.metadata)}
+
 @app.post("/ingest")
-async def ingest_endpoint(file: UploadFile = File(...)):
+def ingest_endpoint(file: UploadFile = File(...)):
     """
     Uploads a video and ingests it into the system.
+    Runs in a threadpool to avoid blocking the event loop.
     """
     file_location = os.path.join(UPLOAD_DIR, file.filename)
     with open(file_location, "wb") as buffer:
@@ -178,10 +198,11 @@ async def preview_endpoint(
     return StreamingResponse(img_byte_arr, media_type="image/jpeg")
 
 @app.post("/render")
-async def render_endpoint(request: RenderRequest):
+def render_endpoint(request: RenderRequest):
     """
     Full Render:
     1. Generate EDL from curve & nodes.
+    Runs in a threadpool to avoid blocking.
     2. Render video.
     """
     if not state.db or len(state.db.metadata) == 0:
