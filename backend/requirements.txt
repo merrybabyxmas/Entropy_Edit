@@ -1,0 +1,9 @@
+torch
+transformers
+pillow
+numpy
+faiss-cpu
+opencv-python
+fastapi
+uvicorn
+pytest
