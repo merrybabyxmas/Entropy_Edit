@@ -1,0 +1,44 @@
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [27431] using StatReload
+/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/torch/amp/autocast_mode.py:270: UserWarning: User provided device_type of 'cuda', but CUDA is not available. Disabling
+  warnings.warn(
+INFO:     Started server process [27577]
+INFO:     Waiting for application startup.
+Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
+INFO:     Application startup complete.
+Initializing Engines...
+Loading CLIP model openai/clip-vit-base-patch32 on cpu...
+Loading VAE model stabilityai/sd-vae-ft-mse on cpu...
+Loading DiT model facebook/dit-xl-2-256 on cpu...
+Warning: Failed to load DiT model (facebook/dit-xl-2-256 does not appear to have a file named config.json.). Falling back to simple noise.
+Created new VectorDB.
+INFO:     127.0.0.1:56038 - "GET /assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56042 - "GET /assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56042 - "OPTIONS /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56038 - "POST /preview HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:56038 - "OPTIONS /edl HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56042 - "POST /edl HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34130 - "GET /assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34130 - "GET /assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34130 - "OPTIONS /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34132 - "POST /preview HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:34132 - "OPTIONS /edl HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34130 - "POST /edl HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33492 - "GET /assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33492 - "GET /assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33492 - "OPTIONS /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33504 - "POST /preview HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:33504 - "OPTIONS /edl HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33492 - "POST /edl HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'tests/test_api.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [27577]
+/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/torch/amp/autocast_mode.py:270: UserWarning: User provided device_type of 'cuda', but CUDA is not available. Disabling
+  warnings.warn(
+INFO:     Started server process [30797]
+INFO:     Waiting for application startup.
+Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
+INFO:     Application startup complete.

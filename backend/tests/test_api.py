@@ -52,16 +52,32 @@ def test_api_flow(setup_test_data):
 
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "success"
+        assert data["status"] == "queued"
+
+        # Poll for completion
+        import time
+        max_retries = 20
+        filename = "test_video.mp4"
+        ingested = False
+        for _ in range(max_retries):
+            res = client.get(f"/ingest/status/{filename}")
+            if res.status_code == 200 and res.json().get("status") == "completed":
+                ingested = True
+                break
+            time.sleep(0.5)
+
+        assert ingested, "Ingestion failed to complete in time"
         assert os.path.exists(DB_PATH + ".index")
 
         # 2. Preview
+        # Use updated payload structure from Layout.tsx (Simulator-compatible)
         payload = {
             "timestamp": 0.5,
-            "curve_val": 0.5,
+            "curve_data": [{"time": 0.0, "value": 0.5}, {"time": 1.0, "value": 0.5}],
             "nodes": [
                 {"peak_t": 0.5, "sigma": 0.1, "amplitude": 1.0}
-            ]
+            ],
+            "duration": 2.0
         }
 
         response = client.post("/preview", json=payload)

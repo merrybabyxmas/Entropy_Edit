@@ -1,12 +1,20 @@
 import React, { useRef } from 'react';
 
+export interface ClipBlock {
+    timeline_start: number;
+    duration: number;
+    similarity_score: number;
+    source_clip_id: string;
+}
+
 interface TimelineProps {
     currentTime: number;
     duration?: number;
     onTimeChange: (time: number) => void;
+    clips?: ClipBlock[];
 }
 
-const Timeline: React.FC<TimelineProps> = ({ currentTime, duration = 100, onTimeChange }) => {
+const Timeline: React.FC<TimelineProps> = ({ currentTime, duration = 100, onTimeChange, clips = [] }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
     const handleInteract = (e: React.MouseEvent) => {
@@ -42,19 +50,31 @@ const Timeline: React.FC<TimelineProps> = ({ currentTime, duration = 100, onTime
             </div>
 
             {/* Tracks */}
-            <div className="flex gap-2 items-center pointer-events-none opacity-50">
+            <div className="flex gap-2 items-center pointer-events-none">
                  <div className="w-20 text-[10px] font-bold text-gray-500">Main Channel</div>
-                 <div className="flex-1 h-10 bg-gray-200/50 rounded-lg flex items-center p-1 gap-1 shadow-inner relative">
-                     <div className="h-8 w-16 bg-blue-400 rounded shadow-sm border border-blue-300 flex items-center justify-center text-[8px] text-white">Clip 1</div>
-                     <div className="h-8 w-12 bg-blue-400 rounded shadow-sm border border-blue-300"></div>
-                     <div className="h-8 w-20 bg-blue-400 rounded shadow-sm border border-blue-300"></div>
+                 <div className="flex-1 h-10 bg-gray-200/50 rounded-lg relative shadow-inner overflow-hidden">
+                     {clips.map((clip, idx) => (
+                         <div
+                            key={idx}
+                            className="absolute h-full top-0 border-r border-white/20 flex items-center justify-center text-[8px] text-white truncate px-1 transition-all"
+                            style={{
+                                left: `${(clip.timeline_start / duration) * 100}%`,
+                                width: `${(clip.duration / duration) * 100}%`,
+                                backgroundColor: `rgba(77, 124, 254, ${0.3 + clip.similarity_score * 0.7})` // Opacity based on score
+                            }}
+                            title={`${clip.source_clip_id} (Sim: ${clip.similarity_score.toFixed(2)})`}
+                         >
+                            {clip.source_clip_id}
+                         </div>
+                     ))}
                  </div>
             </div>
 
             <div className="flex gap-2 items-center pointer-events-none opacity-50">
                  <div className="w-20 text-[10px] font-bold text-gray-500">Overlay Channel</div>
                  <div className="flex-1 h-10 bg-gray-200/50 rounded-lg flex items-center p-1 gap-1 shadow-inner relative">
-                      <div className="absolute left-[20%] h-8 w-16 bg-orange-400 rounded shadow-sm border border-orange-300 flex items-center justify-center text-[8px] text-white">Clip A</div>
+                      {/* Placeholder for future overlay implementation */}
+                      <div className="absolute left-[20%] h-8 w-16 bg-orange-400 rounded shadow-sm border border-orange-300 flex items-center justify-center text-[8px] text-white">Overlay</div>
                  </div>
             </div>
 

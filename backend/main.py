@@ -5,7 +5,7 @@ import shutil
 import uvicorn
 import numpy as np
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, UploadFile, File, HTTPException, Body
+from fastapi import FastAPI, UploadFile, File, HTTPException, Body, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
@@ -44,6 +44,7 @@ class EngineState:
     encoder: Optional[VideoEncoder] = None
     db: Optional[VectorDB] = None
     perturbator: Optional[LatentPerturbator] = None
+    ingest_status: Dict[str, str] = {} # task_id -> status
 
 state = EngineState()
 
@@ -73,13 +74,9 @@ class CurvePoint(BaseModel):
 
 class PreviewRequest(BaseModel):
     timestamp: float
-    curve_val: float
+    curve_data: List[CurvePoint]
     nodes: List[GaussianNode]
-    # For preview, we might just need to find *one* clip that matches the current curve state?
-    # Or does the user seek through the *timeline*?
-    # "Find clip at this timestamp" implies we are previewing the EDL result at time T.
-    # To do that, we need the full curve to generate EDL, OR we just simulate the logic for T.
-    # Simulating logic for T is faster.
+    duration: float = 100.0
 
 class RenderRequest(BaseModel):
     curve_data: List[CurvePoint]
@@ -109,81 +106,106 @@ async def get_assets():
 
     return {"assets": assets, "total_clips": len(state.db.metadata)}
 
+def run_ingest(file_path: str, filename: str):
+    try:
+        state.ingest_status[filename] = "processing"
+        # Note: ingest_video expects paths.
+        ingest_video(file_path, DB_PATH, DATA_DIR, sample_interval_sec=1.0)
+
+        # Reload DB to reflect changes - naive lock-less reload
+        state.db = VectorDB(dimension=512)
+        state.db.load(DB_PATH)
+        state.ingest_status[filename] = "completed"
+    except Exception as e:
+        print(f"Ingest failed: {e}")
+        state.ingest_status[filename] = f"failed: {e}"
+
 @app.post("/ingest")
-def ingest_endpoint(file: UploadFile = File(...)):
+async def ingest_endpoint(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     """
-    Uploads a video and ingests it into the system.
-    Runs in a threadpool to avoid blocking the event loop.
+    Uploads a video and ingests it into the system via background task.
     """
     file_location = os.path.join(UPLOAD_DIR, file.filename)
     with open(file_location, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Trigger Ingest (Blocking for now, should be background task in prod)
-    # We pass paths relative to our config
-    try:
-        # Note: ingest_video expects paths.
-        ingest_video(file_location, DB_PATH, DATA_DIR, sample_interval_sec=1.0)
+    state.ingest_status[file.filename] = "queued"
+    background_tasks.add_task(run_ingest, file_location, file.filename)
 
-        # Reload DB to reflect changes
-        state.db = VectorDB(dimension=512)
-        state.db.load(DB_PATH)
+    return {"status": "queued", "task_id": file.filename}
 
-        return {"status": "success", "message": f"Ingested {file.filename}", "frames": len(state.db.metadata)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/ingest/status/{filename}")
+async def get_ingest_status(filename: str):
+    status = state.ingest_status.get(filename, "unknown")
+    return {"filename": filename, "status": status}
+
+@app.post("/edl")
+def edl_endpoint(request: RenderRequest):
+    """
+    Simulates the EDL without rendering.
+    Returns the list of clips with their start/end times.
+    """
+    if not state.db or len(state.db.metadata) == 0:
+        return {"edl": []}
+
+    curve_data_dicts = [c.model_dump() for c in request.curve_data]
+    nodes_dicts = [n.model_dump() for n in request.nodes]
+
+    # For EDL simulation, we reset random seed to ensure consistency with preview
+    np.random.seed(42)
+
+    edl = match_clips_to_curve(
+        curve_data=curve_data_dicts,
+        vector_db=state.db,
+        target_length_sec=request.target_length,
+        clip_granularity_sec=2.0,
+        time_scaling_options=request.time_scaling,
+        filter_nodes=nodes_dicts
+    )
+    return {"edl": edl}
 
 @app.post("/preview")
-async def preview_endpoint(
-    timestamp: float = Body(...),
-    curve_val: float = Body(...),
-    nodes: List[GaussianNode] = Body(...)
-):
+def preview_endpoint(request: PreviewRequest):
     """
     Real-time preview:
-    1. Finds a clip based on `curve_val` (Similarity).
-    2. Calculates `filter_weight` from `nodes` at `timestamp`.
+    1. Replays optimizer logic to find EXACT clip at `timestamp`.
+    2. Calculates `filter_weight`.
     3. Perturbs latent.
     4. Returns JPEG image.
     """
     if not state.db or len(state.db.metadata) == 0:
         raise HTTPException(status_code=400, detail="Database empty. Ingest video first.")
 
-    # 1. Similarity Logic (Simplified version of optimizer logic)
-    # If we have no context (current_vector), we pick random or just based on query?
-    # We don't have 'current_vector' in a stateless preview request unless passed.
-    # Let's assume we pick a random one if curve_val is mid, or high sim to *something*?
-    # Actually, the logic "High Curve = High Similarity" implies similarity to the *previous* clip.
-    # Without previous context, this is ambiguous.
-    # FOR PREVIEW: We might just pick a random clip from the DB to show *effect* application.
-    # Or better, user might browse clips.
-    # Let's just pick a random clip for now to demonstrate the *perturbation*.
+    from engine.optimizer import get_bell_shape_weight
+    from engine.simulator import find_clip_at_time
 
-    # Pick a random clip
-    import random
-    idx = random.randint(0, len(state.db.metadata) - 1)
-    meta = state.db.metadata[idx]
+    curve_dicts = [c.model_dump() for c in request.curve_data]
+    nodes_dicts = [n.model_dump() for n in request.nodes]
+
+    # 1. Find the clip deterministically
+    meta = find_clip_at_time(
+        timestamp=request.timestamp, # Normalized
+        curve_data=curve_dicts,
+        vector_db=state.db,
+        duration=request.duration,
+        granularity=2.0
+    )
+
+    if not meta:
+        raise HTTPException(status_code=404, detail="No clip found for this time.")
 
     # 2. Filter Weight
-    # We need to normalize timestamp if nodes use normalized time (0-1).
-    # Assuming the UI passes normalized time for preview context?
-    # Or passes absolute time and we normalize?
-    # Let's assume timestamp is normalized (0.0 - 1.0) relative to timeline.
-    from engine.optimizer import get_bell_shape_weight
-
-    # Convert Pydantic models to dicts
-    nodes_dicts = [n.model_dump() for n in nodes]
-    weight = get_bell_shape_weight(timestamp, nodes_dicts)
+    weight = get_bell_shape_weight(request.timestamp, nodes_dicts)
 
     # 3. Load & Perturb
     latent_path = meta['latent_path']
     if not os.path.exists(latent_path):
-         raise HTTPException(status_code=404, detail="Latent file not found.")
+         # Fallback if specific file missing
+         raise HTTPException(status_code=404, detail=f"Latent file {latent_path} not found.")
 
     latent = torch.load(latent_path, map_location=state.encoder.device)
 
     # Perturb
-    # DiT perturbation is heavy, so it might take a second.
     perturbed_latent = state.perturbator.perturb(latent, noise_level=weight)
 
     # Decode

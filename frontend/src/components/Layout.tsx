@@ -4,7 +4,7 @@ import { FolderOpen, Settings, Play, Menu, Download, Loader } from 'lucide-react
 import CurveEditor from './CurveEditor';
 import AssetBrowser from './AssetBrowser';
 import PropertiesPanel, { type PropertyState } from './PropertiesPanel';
-import Timeline from './Timeline';
+import Timeline, { type ClipBlock } from './Timeline';
 import axios from 'axios';
 import debounce from 'lodash/debounce';
 
@@ -12,10 +12,9 @@ const Layout = () => {
   // --- State Definitions ---
 
   // Curve Data
-  // Bezier points (Similarity)
   const [curveData, setCurveData] = useState<any[]>([]);
-  // Gaussian Nodes (Noise)
   const [nodeData, setNodeData] = useState<any[]>([]);
+  const [edlClips, setEdlClips] = useState<ClipBlock[]>([]);
 
   // Properties (Sliders)
   const [properties, setProperties] = useState<PropertyState>({
@@ -28,7 +27,7 @@ const Layout = () => {
 
   // Timeline
   const [currentTime, setCurrentTime] = useState<number>(0);
-  const DURATION = 100; // Mock duration
+  const DURATION = 100; // Fixed Duration for prototype
 
   // UI State
   const [isRendering, setIsRendering] = useState(false);
@@ -73,33 +72,32 @@ const Layout = () => {
 
   const fetchPreview = async (
       t: number,
-      _cData: any[],
+      cData: any[],
       nData: any[],
       props: PropertyState
   ) => {
-      // Don't fetch if no nodes (might be valid state but prevents spam on init)
-      // Actually we should fetch even if empty to show original
-
       setIsPreviewLoading(true);
       try {
-          // Prepare payload
-          const cVal = getCurveValueAtTime(t);
-
-          // Map nodeData (from editor) + props overrides
-          // Editor provides normalized peak_t, amplitude. Sigma comes from props or editor default.
-          // Let's rely on Editor's data mostly, but maybe use `props.sigma` as a modifier?
-          // For now, just pass what the editor has.
-          // The backend expects specific fields.
           const nodesPayload = nData.map((n: any) => ({
-             peak_t: n.peak_t, // 0-1
-             sigma: n.sigma || props.sigma, // Use prop default if missing, or use slider?
-             amplitude: n.amplitude // 0-1
+             peak_t: n.peak_t,
+             sigma: n.sigma || props.sigma,
+             amplitude: n.amplitude
           }));
 
+          const sampledCurve = [];
+          if (cData.length > 0) {
+             cData.forEach((p: any) => {
+                 sampledCurve.push({ time: p.x, value: p.y });
+             });
+          } else {
+              sampledCurve.push({time: 0, value: 0.5}, {time: 1, value: 0.5});
+          }
+
           const res = await axios.post('http://localhost:8000/preview', {
-              timestamp: t / DURATION, // normalize 0-1
-              curve_val: cVal,
-              nodes: nodesPayload
+              timestamp: t / DURATION,
+              curve_data: sampledCurve,
+              nodes: nodesPayload,
+              duration: DURATION
           }, { responseType: 'blob' });
 
           const url = URL.createObjectURL(res.data);
@@ -112,20 +110,55 @@ const Layout = () => {
       }
   };
 
-  // Debounced version
-  // We need to use useCallback to keep the same debounced function instance
-  // But passing state into it is tricky with closures.
-  // Standard pattern: useEffect triggers the debounced function.
+  const fetchEDL = async (cData: any[], nData: any[], props: PropertyState) => {
+       try {
+          const nodesPayload = nData.map((n: any) => ({
+             peak_t: n.peak_t,
+             sigma: n.sigma || props.sigma,
+             amplitude: n.amplitude
+          }));
+          const sampledCurve = [];
+          if (cData.length > 0) {
+             cData.forEach((p: any) => {
+                 sampledCurve.push({ time: p.x, value: p.y });
+             });
+          } else {
+              sampledCurve.push({time: 0, value: 0.5}, {time: 1, value: 0.5});
+          }
 
-  const debouncedFetch = useCallback(
+          const res = await axios.post('http://localhost:8000/edl', {
+              curve_data: sampledCurve,
+              nodes: nodesPayload,
+              target_length: DURATION
+          });
+
+          if (res.data.edl) {
+              setEdlClips(res.data.edl);
+          }
+       } catch(e) {
+           console.error("EDL fetch failed", e);
+       }
+  };
+
+  const debouncedPreview = useCallback(
       debounce((t, c, n, p) => fetchPreview(t, c, n, p), 300),
       []
   );
 
+  const debouncedEDL = useCallback(
+      debounce((c, n, p) => fetchEDL(c, n, p), 500),
+      []
+  );
+
+  // Trigger Preview on Time change or curve change
   useEffect(() => {
-      debouncedFetch(currentTime, curveData, nodeData, properties);
-      // Cleanup? URL.revokeObjectURL?
-  }, [currentTime, curveData, nodeData, properties, debouncedFetch]);
+      debouncedPreview(currentTime, curveData, nodeData, properties);
+  }, [currentTime, curveData, nodeData, properties, debouncedPreview]);
+
+  // Trigger EDL update only on curve/property change (not time)
+  useEffect(() => {
+      debouncedEDL(curveData, nodeData, properties);
+  }, [curveData, nodeData, properties, debouncedEDL]);
 
 
   // --- Render Logic ---
@@ -239,6 +272,7 @@ const Layout = () => {
                 currentTime={currentTime}
                 duration={DURATION}
                 onTimeChange={setCurrentTime}
+                clips={edlClips}
              />
           </NeuPanel>
 
